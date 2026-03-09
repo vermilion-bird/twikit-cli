@@ -1,0 +1,2 @@
+[console_scripts]
+twikit-cli = twikit_cli.cli:main

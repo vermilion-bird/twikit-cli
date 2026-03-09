@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "twikit-cli"
+version = "1.0.0"
+description = "Twitter/X information retrieval CLI built on twikit"
+requires-python = ">=3.10"
+dependencies = [
+    "twikit>=2.0.0",
+    "click>=8.0",
+    "rich>=13.0",
+    "httpx>=0.25",
+]
+
+[project.scripts]
+twikit-cli = "twikit_cli.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
