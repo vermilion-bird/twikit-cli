@@ -660,48 +660,70 @@ def tweet_get(ctx, tweet_id):
     async def _run():
         with console.status(f"[cyan]Fetching tweet {tweet_id}…[/]"):
             try:
-                t = await client.get_tweet_by_id(tweet_id)
+                response = await client.gql.tweet_result_by_rest_id(tweet_id)
+                tweet_result = response[0].get("data", {}).get("tweetResult", {}).get("result", {})
+
+                # 提取article数据
+                article_data = tweet_result.get("article", {})
+
+                # 解析article内容
+                if article_data:
+                    from article_parser import parse_article_content, print_article
+                    article_info = parse_article_content(article_data)
+                    print_article(article_info)
+                    return
+
+                # 处理普通tweet
+                legacy = tweet_result.get("legacy", {})
+                user_result = tweet_result.get("core", {}).get("user_results", {}).get("result", {})
+                user_legacy = user_result.get("legacy", {})
+
+                if ctx.obj["json_output"]:
+                    data = {
+                        "id": tweet_result.get("rest_id"),
+                        "text": legacy.get("full_text", ""),
+                        "created_at": legacy.get("created_at"),
+                        "user": {
+                            "id": user_result.get("rest_id"),
+                            "name": user_legacy.get("name"),
+                            "screen_name": user_legacy.get("screen_name"),
+                        },
+                        "retweet_count": legacy.get("retweet_count", 0),
+                        "favorite_count": legacy.get("favorite_count", 0),
+                        "reply_count": legacy.get("reply_count", 0),
+                        "bookmark_count": legacy.get("bookmark_count", 0),
+                        "view_count": tweet_result.get("views", {}).get("count"),
+                        "lang": legacy.get("lang"),
+                    }
+                    console.print_json(json.dumps(data, ensure_ascii=False))
+                    return
+
+                text = legacy.get("full_text", "")
+                user_name = user_legacy.get("name", "Unknown")
+                screen_name = user_legacy.get("screen_name", "unknown")
+                created_at = legacy.get("created_at", "")
+
+                content = (
+                    f"[bold cyan]{user_name}[/] [dim]@{screen_name}[/]\n"
+                    f"[dim]{created_at}[/]\n\n"
+                    f"{text}\n\n"
+                    f"[red]❤ {fmt_num(legacy.get('favorite_count', 0))}[/]   "
+                    f"[green]🔁 {fmt_num(legacy.get('retweet_count', 0))}[/]   "
+                    f"[blue]💬 {fmt_num(legacy.get('reply_count', 0))}[/]   "
+                    f"[yellow]🔖 {fmt_num(legacy.get('bookmark_count', 0))}[/]   "
+                    f"[dim]👁 {fmt_num(tweet_result.get('views', {}).get('count', 0))}[/]"
+                )
+
+                media = legacy.get("entities", {}).get("media", [])
+                if media:
+                    media_types = [m.get("type", "unknown") for m in media]
+                    content += f"\n[dim]Media: {', '.join(media_types)}[/]"
+
+                console.print(Panel(content, title=f"Tweet {tweet_id}", border_style="cyan", expand=False))
+
             except TweetNotAvailable:
                 err_console.print(f"[red]Tweet {tweet_id} not found or unavailable.[/]")
                 raise SystemExit(1)
-
-        if ctx.obj["json_output"]:
-            data = {
-                "id": t.id,
-                "text": t.full_text or t.text,
-                "created_at": t.created_at,
-                "user": {
-                    "id": t.user.id,
-                    "name": t.user.name,
-                    "screen_name": t.user.screen_name,
-                },
-                "retweet_count": t.retweet_count,
-                "favorite_count": t.favorite_count,
-                "reply_count": t.reply_count,
-                "bookmark_count": t.bookmark_count,
-                "view_count": t.view_count,
-                "lang": t.lang,
-                "media_count": len(t.media) if t.media else 0,
-            }
-            console.print_json(json.dumps(data, ensure_ascii=False))
-            return
-
-        text = t.full_text or t.text or ""
-        content = (
-            f"[bold cyan]{t.user.name}[/] [dim]@{t.user.screen_name}[/]\n"
-            f"[dim]{t.created_at or ''}[/]\n\n"
-            f"{text}\n\n"
-            f"[red]❤ {fmt_num(t.favorite_count)}[/]   "
-            f"[green]🔁 {fmt_num(t.retweet_count)}[/]   "
-            f"[blue]💬 {fmt_num(t.reply_count)}[/]   "
-            f"[yellow]🔖 {fmt_num(t.bookmark_count)}[/]   "
-            f"[dim]👁 {fmt_num(t.view_count)}[/]"
-        )
-        if t.media:
-            media_names = [type(m).__name__ for m in t.media]
-            content += f"\n[dim]Media: {', '.join(media_names)}[/]"
-
-        console.print(Panel(content, title=f"Tweet {tweet_id}", border_style="cyan", expand=False))
 
     try:
         asyncio.run(_run())
