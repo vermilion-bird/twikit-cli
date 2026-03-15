@@ -18,6 +18,14 @@ from rich.table import Table
 from twikit import Client
 from twikit.errors import TweetNotAvailable, UserNotFound
 
+# 强制使用 UTF-8 编码（修复 Windows GBK 编码问题）
+if sys.platform == "win32":
+    import io
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if isinstance(sys.stderr, io.TextIOWrapper):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 CONFIG_DIR = Path.home() / ".config" / "twikit"
 DEFAULT_COOKIES_FILE = CONFIG_DIR / "cookies.json"
 
