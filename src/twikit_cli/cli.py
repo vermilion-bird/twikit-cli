@@ -668,7 +668,7 @@ def tweet_get(ctx, tweet_id):
 
                 # 解析article内容
                 if article_data:
-                    from article_parser import parse_article_content, print_article
+                    from .article_parser import parse_article_content, print_article
                     article_info = parse_article_content(article_data)
                     print_article(article_info)
                     return

@@ -47,3 +47,5 @@ htmlcov/
 
 # Claude
 .claude/
+
+twikit_cli.egg-info
