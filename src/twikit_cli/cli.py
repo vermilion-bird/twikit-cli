@@ -210,18 +210,8 @@ def search_tweets(ctx, query, search_type, count):
         tweet_list = list(tweets)
 
         if ctx.obj["json_output"]:
-            results = [
-                {
-                    "id": t.id,
-                    "text": t.full_text or t.text,
-                    "created_at": t.created_at,
-                    "user": {"name": t.user.name, "screen_name": t.user.screen_name},
-                    "retweet_count": t.retweet_count,
-                    "favorite_count": t.favorite_count,
-                    "reply_count": t.reply_count,
-                }
-                for t in tweet_list
-            ]
+            from .formatters import tweet_to_dict
+            results = [tweet_to_dict(t) for t in tweet_list]
             console.print_json(json.dumps(results, ensure_ascii=False))
             return
 
@@ -285,18 +275,8 @@ def search_users_cmd(ctx, query, count):
         user_list = list(users)
 
         if ctx.obj["json_output"]:
-            results = [
-                {
-                    "id": u.id,
-                    "name": u.name,
-                    "screen_name": u.screen_name,
-                    "description": u.description,
-                    "followers_count": u.followers_count,
-                    "following_count": u.following_count,
-                    "verified": u.is_blue_verified,
-                }
-                for u in user_list
-            ]
+            from .formatters import user_to_dict
+            results = [user_to_dict(u) for u in user_list]
             console.print_json(json.dumps(results, ensure_ascii=False))
             return
 
@@ -367,21 +347,8 @@ def user_info(ctx, screen_name):
                 raise SystemExit(1)
 
         if ctx.obj["json_output"]:
-            data = {
-                "id": u.id,
-                "name": u.name,
-                "screen_name": u.screen_name,
-                "description": u.description,
-                "location": u.location,
-                "created_at": u.created_at,
-                "followers_count": u.followers_count,
-                "following_count": u.following_count,
-                "tweets_count": u.statuses_count,
-                "favourites_count": u.favourites_count,
-                "verified": u.is_blue_verified,
-                "protected": u.protected,
-                "profile_image_url": u.profile_image_url,
-            }
+            from .formatters import user_to_dict
+            data = user_to_dict(u)
             console.print_json(json.dumps(data, ensure_ascii=False))
             return
 
@@ -448,17 +415,8 @@ def user_tweets(ctx, screen_name, tweet_type, count):
         tweet_list = list(tweets)
 
         if ctx.obj["json_output"]:
-            results = [
-                {
-                    "id": t.id,
-                    "text": t.full_text or t.text,
-                    "created_at": t.created_at,
-                    "retweet_count": t.retweet_count,
-                    "favorite_count": t.favorite_count,
-                    "reply_count": t.reply_count,
-                }
-                for t in tweet_list
-            ]
+            from .formatters import tweet_to_dict
+            results = [tweet_to_dict(t) for t in tweet_list]
             console.print_json(json.dumps(results, ensure_ascii=False))
             return
 
@@ -468,11 +426,13 @@ def user_tweets(ctx, screen_name, tweet_type, count):
             show_lines=True,
             expand=True,
         )
+
         table.add_column("Date", style="dim", width=11)
+        table.add_column("TweetID", style="cyan", width=20)
         table.add_column("Tweet", ratio=4)
-        table.add_column("❤", justify="right", style="red", width=7)
-        table.add_column("🔁", justify="right", style="green", width=7)
-        table.add_column("💬", justify="right", style="blue", width=7)
+        table.add_column("favorite", justify="right", style="red", width=7)
+        table.add_column("repost", justify="right", style="green", width=7)
+        table.add_column("reply", justify="right", style="blue", width=7)
 
         for t in tweet_list:
             text = (t.full_text or t.text or "").replace("\n", " ")
@@ -480,6 +440,7 @@ def user_tweets(ctx, screen_name, tweet_type, count):
                 text = text[:247] + "…"
             table.add_row(
                 (t.created_at or "")[:10],
+                str(t.id or ""),
                 text,
                 fmt_num(t.favorite_count),
                 fmt_num(t.retweet_count),
@@ -529,14 +490,8 @@ def user_followers(ctx, screen_name, count):
         follower_list = list(followers)
 
         if ctx.obj["json_output"]:
-            results = [
-                {
-                    "name": f.name,
-                    "screen_name": f.screen_name,
-                    "followers_count": f.followers_count,
-                }
-                for f in follower_list
-            ]
+            from .formatters import user_to_dict
+            results = [user_to_dict(f) for f in follower_list]
             console.print_json(json.dumps(results, ensure_ascii=False))
             return
 
@@ -678,6 +633,13 @@ def tweet_get(ctx, tweet_id):
                 if article_data:
                     from .article_parser import parse_article_content, print_article
                     article_info = parse_article_content(article_data)
+
+                    if ctx.obj["json_output"]:
+                        from .formatters import article_to_dict
+                        article_json = article_to_dict(article_info)
+                        console.print_json(json.dumps(article_json, ensure_ascii=False))
+                        return
+
                     print_article(article_info)
                     return
 
@@ -687,22 +649,8 @@ def tweet_get(ctx, tweet_id):
                 user_legacy = user_result.get("legacy", {})
 
                 if ctx.obj["json_output"]:
-                    data = {
-                        "id": tweet_result.get("rest_id"),
-                        "text": legacy.get("full_text", ""),
-                        "created_at": legacy.get("created_at"),
-                        "user": {
-                            "id": user_result.get("rest_id"),
-                            "name": user_legacy.get("name"),
-                            "screen_name": user_legacy.get("screen_name"),
-                        },
-                        "retweet_count": legacy.get("retweet_count", 0),
-                        "favorite_count": legacy.get("favorite_count", 0),
-                        "reply_count": legacy.get("reply_count", 0),
-                        "bookmark_count": legacy.get("bookmark_count", 0),
-                        "view_count": tweet_result.get("views", {}).get("count"),
-                        "lang": legacy.get("lang"),
-                    }
+                    from .formatters import gql_tweet_to_dict
+                    data = gql_tweet_to_dict(tweet_result, legacy, user_result, user_legacy)
                     console.print_json(json.dumps(data, ensure_ascii=False))
                     return
 

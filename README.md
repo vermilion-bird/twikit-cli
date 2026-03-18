@@ -315,7 +315,7 @@ twikit-cli --json-output tweet get 1234567890123456789
 
 ## JSON 输出
 
-所有命令加上 `--json-output` 后输出结构化 JSON，方便管道处理：
+所有命令加上 `--json-output` 后输出结构化 JSON,方便管道处理：
 
 ```bash
 # 搜索推文并用 jq 提取正文
@@ -329,6 +329,408 @@ twikit-cli --json-output trends --category sports | jq '.[].name'
 
 # 保存结果到文件
 twikit-cli --json-output user tweets OpenAI --count 50 > openai_tweets.json
+```
+
+### 增强型 JSON 输出 (v2.0+)
+
+从 v2.0 开始，JSON 输出包含更完整的数据结构，支持 AI 智能体和高级数据分析场景。
+
+**新增内容：**
+- 完整的作者对象（包含头像、认证状态、粉丝数等）
+- 实体提取（hashtags、mentions、URLs 及其位置索引）
+- 媒体信息（图片、视频 URL 及元数据）
+- 关系追踪（回复、引用、转推关系）
+- 高级指标（浏览量、书签数、引用数）
+- 文章结构化输出（blocks、markdown、纯文本）
+
+---
+
+### JSON 输出迁移指南
+
+**⚠️ 重要变更**
+
+v2.0 对 JSON 输出格式进行了破坏性更新，以提供更完整的数据结构。
+
+#### 变更 1：`user` → `author`
+
+推文的用户信息字段从 `user` 改为 `author`，且包含完整的用户对象。
+
+**旧格式 (v1.x):**
+```json
+{
+  "id": "123",
+  "text": "Hello world",
+  "user": {
+    "name": "John Doe",
+    "screen_name": "johndoe"
+  }
+}
+```
+
+**新格式 (v2.0+):**
+```json
+{
+  "id": "123",
+  "text": "Hello world",
+  "author": {
+    "id": "456",
+    "name": "John Doe",
+    "screen_name": "johndoe",
+    "profile_image_url": "https://...",
+    "verified": false,
+    "is_blue_verified": true,
+    "followers_count": 1000,
+    ...
+  }
+}
+```
+
+**迁移方案：**
+```bash
+# 旧脚本
+jq '.[].user.name'
+
+# 新脚本
+jq '.[].author.name'
+
+# 兼容方案（同时支持新旧版本）
+jq '.[] | (.author // .user).name'
+```
+
+#### 变更 2：指标分组到 `metrics` 对象
+
+点赞数、转推数等指标从顶层移到 `metrics` 嵌套对象中。
+
+**旧格式:**
+```json
+{
+  "id": "123",
+  "text": "Hello",
+  "retweet_count": 100,
+  "favorite_count": 500,
+  "reply_count": 10
+}
+```
+
+**新格式:**
+```json
+{
+  "id": "123",
+  "text": "Hello",
+  "metrics": {
+    "retweet_count": 100,
+    "favorite_count": 500,
+    "reply_count": 10,
+    "quote_count": 20,
+    "bookmark_count": 50,
+    "view_count": 10000
+  }
+}
+```
+
+**迁移方案：**
+```bash
+# 旧脚本
+jq '.[].favorite_count'
+
+# 新脚本
+jq '.[].metrics.favorite_count'
+
+# 兼容方案
+jq '.[] | (.metrics.favorite_count // .favorite_count)'
+```
+
+#### 向后兼容支持
+
+为平滑迁移，v2.0 **临时保留**了旧字段（标记为 DEPRECATED）：
+- `user`（指向 `author`）
+- `retweet_count`、`favorite_count`、`reply_count`（指向 `metrics.*`）
+
+这些字段将在未来版本中移除，建议尽快迁移到新字段。
+
+---
+
+### 增强型 JSON 架构参考
+
+#### 推文对象 (Tweet)
+
+```json
+{
+  "id": "1234567890",
+  "text": "推文文本（可能被截断）",
+  "full_text": "完整推文文本",
+  "created_at": "Mon Jan 01 00:00:00 +0000 2024",
+  "lang": "zh",
+
+  "author": {
+    "id": "123456",
+    "name": "显示名",
+    "screen_name": "username",
+    "description": "用户简介",
+    "profile_image_url": "https://...",
+    "profile_banner_url": "https://...",
+    "followers_count": 1000,
+    "following_count": 500,
+    "verified": false,
+    "is_blue_verified": true,
+    "protected": false
+  },
+
+  "metrics": {
+    "reply_count": 10,
+    "retweet_count": 100,
+    "favorite_count": 500,
+    "quote_count": 20,
+    "bookmark_count": 50,
+    "view_count": 10000
+  },
+
+  "entities": {
+    "hashtags": [
+      {"text": "AI", "indices": [0, 3]}
+    ],
+    "urls": [{
+      "url": "https://t.co/xxx",
+      "expanded_url": "https://example.com",
+      "display_url": "example.com",
+      "indices": [10, 33]
+    }],
+    "user_mentions": [{
+      "id": "789",
+      "name": "Mentioned User",
+      "screen_name": "mentioned",
+      "indices": [5, 15]
+    }]
+  },
+
+  "media": [{
+    "type": "photo",
+    "url": "https://...",
+    "media_url_https": "https://...",
+    "expanded_url": "https://..."
+  }],
+
+  "relationships": {
+    "in_reply_to_user_id": null,
+    "in_reply_to_status_id": null,
+    "quoted_status_id": null,
+    "is_quote_status": false,
+    "is_retweet": false,
+    "retweeted_status_id": null
+  },
+
+  "context": {
+    "possibly_sensitive": false,
+    "place": null
+  }
+}
+```
+
+#### 用户对象 (User)
+
+```json
+{
+  "id": "123456",
+  "name": "显示名",
+  "screen_name": "username",
+  "description": "用户简介",
+  "location": "地理位置",
+  "url": "https://example.com",
+  "created_at": "Mon Jan 01 00:00:00 +0000 2010",
+
+  "profile_image_url": "https://pbs.twimg.com/profile_images/.../xxx.jpg",
+  "profile_banner_url": "https://pbs.twimg.com/profile_banners/.../xxx",
+
+  "followers_count": 1000,
+  "following_count": 500,
+  "statuses_count": 1234,
+  "favourites_count": 5678,
+
+  "verified": false,
+  "is_blue_verified": true,
+  "protected": false
+}
+```
+
+#### 文章对象 (Article) - 新增
+
+当推文包含长文章时，使用 `--json-output` 会返回结构化文章数据：
+
+```json
+{
+  "id": "article_id",
+  "title": "文章标题",
+  "preview_text": "预览文本...",
+  "cover_media_url": "https://...",
+
+  "content": {
+    "blocks": [
+      {
+        "type": "header-one",
+        "text": "一级标题"
+      },
+      {
+        "type": "unstyled",
+        "text": "段落文本"
+      }
+    ],
+    "markdown": "# 一级标题\n\n段落文本...",
+    "plain_text": "一级标题 段落文本..."
+  }
+}
+```
+
+**Block 类型：**
+- `header-one`、`header-two`、`header-three` - 标题
+- `unstyled` - 普通段落
+- `blockquote` - 引用
+- `unordered-list-item` - 无序列表项
+- `code-block` - 代码块
+
+---
+
+### AI 智能体使用示例
+
+增强型 JSON 输出专为 AI 智能体和数据分析设计，以下是常见使用场景：
+
+#### 1. 提取所有 hashtag 标签
+
+```bash
+twikit-cli --json-output search tweets "#AI" | \
+  jq '[.[] | .entities.hashtags[].text] | unique | sort'
+```
+
+**输出：**
+```json
+["AI", "MachineLearning", "DeepLearning", "NLP"]
+```
+
+#### 2. 构建用户提及关系图
+
+```bash
+twikit-cli --json-output search tweets "Python" | \
+  jq '.[] | {
+    author: .author.screen_name,
+    mentions: [.entities.user_mentions[].screen_name]
+  }'
+```
+
+**输出：**
+```json
+{"author": "alice", "mentions": ["bob", "charlie"]}
+{"author": "dave", "mentions": ["alice"]}
+```
+
+用于构建社交网络分析、影响力追踪等。
+
+#### 3. 分析互动率
+
+```bash
+twikit-cli --json-output user tweets OpenAI --count 50 | \
+  jq '.[] | {
+    text: .text[:50],
+    engagement: (.metrics.favorite_count + .metrics.retweet_count),
+    engagement_rate: (
+      (.metrics.favorite_count + .metrics.retweet_count) /
+      (.metrics.view_count // 1) * 100 | floor
+    )
+  } | select(.engagement > 1000)' | \
+  jq -s 'sort_by(.engagement) | reverse | .[0:5]'
+```
+
+筛选高互动推文，计算互动率。
+
+#### 4. 追踪对话链
+
+```bash
+twikit-cli --json-output search tweets "from:elonmusk" | \
+  jq '.[] | select(.relationships.in_reply_to_status_id != null) | {
+    tweet_id: .id,
+    text: .text[:80],
+    reply_to: .relationships.in_reply_to_status_id
+  }'
+```
+
+识别回复关系，重建对话树。
+
+#### 5. 提取文章内容
+
+```bash
+twikit-cli --json-output tweet get 1234567890123456789 | \
+  jq -r '.content.markdown' > article.md
+```
+
+将长文章导出为 Markdown 格式。
+
+#### 6. 批量提取媒体 URL
+
+```bash
+twikit-cli --json-output search tweets "NASA" --type Media | \
+  jq -r '.[] | .media[]? | .media_url_https' | \
+  sort -u > nasa_images.txt
+
+# 下载所有图片
+cat nasa_images.txt | xargs -n 1 -P 4 wget -q
+```
+
+#### 7. 统计用户认证状态
+
+```bash
+twikit-cli --json-output user followers elonmusk --count 100 | \
+  jq '{
+    total: length,
+    blue_verified: [.[] | select(.is_blue_verified)] | length,
+    legacy_verified: [.[] | select(.verified)] | length,
+    protected: [.[] | select(.protected)] | length
+  }'
+```
+
+**输出：**
+```json
+{
+  "total": 100,
+  "blue_verified": 45,
+  "legacy_verified": 12,
+  "protected": 3
+}
+```
+
+#### 8. 检测敏感内容
+
+```bash
+twikit-cli --json-output search tweets "news" --count 100 | \
+  jq '[.[] | select(.context.possibly_sensitive == true) | {
+    id: .id,
+    text: .text[:100],
+    author: .author.screen_name
+  }]'
+```
+
+#### 9. 分析发布时间分布
+
+```bash
+twikit-cli --json-output user tweets NASA --count 100 | \
+  jq -r '.[].created_at' | \
+  awk '{print $4}' | \
+  cut -d: -f1 | \
+  sort | uniq -c | \
+  sort -rn
+```
+
+统计各小时的发布频率。
+
+#### 10. 导出关注者信息到 CSV
+
+```bash
+twikit-cli --json-output user followers OpenAI --count 200 | \
+  jq -r '.[] | [
+    .id,
+    .name,
+    .screen_name,
+    .followers_count,
+    .following_count,
+    .is_blue_verified
+  ] | @csv' > followers.csv
 ```
 
 ---
